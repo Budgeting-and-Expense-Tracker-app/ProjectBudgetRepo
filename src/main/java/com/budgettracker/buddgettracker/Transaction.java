@@ -3,7 +3,7 @@ package com.budgettracker.buddgettracker;
 import java.time.LocalDate;
 
 public class Transaction {
-    private final String type;        // "Income" or "Expense"
+    private final String type;        
     private final String category;
     private final String description;
     private final double amount;
@@ -24,3 +24,4 @@ public class Transaction {
     public double getAmount() { return amount; }
     public LocalDate getDate() { return date; }
 }
+

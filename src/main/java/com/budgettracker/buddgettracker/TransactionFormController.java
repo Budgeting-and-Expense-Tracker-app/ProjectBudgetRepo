@@ -26,8 +26,16 @@ public class TransactionFormController {
 
     @FXML
     public void initialize() {
+
         categoryCombo.getItems().addAll(
-                "Salary", "Groceries", "Rent", "Bills", "Entertainment", "Other"
+                "Food and Dining",
+                "Transportation",
+                "Shopping",
+                "Entertainment",
+                "Bills and Utilities",
+                "Healthcare",
+                "Education",
+                "Other Expenses"
         );
 
         datePicker.setValue(LocalDate.now());
@@ -41,6 +49,8 @@ public class TransactionFormController {
         });
     }
 
+
+
     @FXML
     private void handleSubmit() {
         try {
@@ -51,7 +61,7 @@ public class TransactionFormController {
 
             String category = categoryCombo.getValue();
             if (category == null || category.isBlank()) {
-                category = "Uncategorized";
+                category = "Other Expenses";
             }
 
             String description = descriptionField.getText();
@@ -69,7 +79,7 @@ public class TransactionFormController {
                 dashboardController.addTransaction(transaction);
             }
 
-            // close popup
+            
             Stage stage = (Stage) submitButton.getScene().getWindow();
             stage.close();
 
@@ -81,3 +91,4 @@ public class TransactionFormController {
         }
     }
 }
+

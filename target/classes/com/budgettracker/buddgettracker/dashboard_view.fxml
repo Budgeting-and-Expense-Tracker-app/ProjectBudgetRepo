@@ -12,7 +12,6 @@
 
 <BorderPane prefHeight="650.0" prefWidth="1000.0" xmlns="http://javafx.com/javafx/25" xmlns:fx="http://javafx.com/fxml/1" fx:controller="com.budgettracker.buddgettracker.DashboardController">
 
-    <!-- ========== TOP: TITLE + BUTTON ========== -->
     <top>
         <VBox spacing="10">
             <padding>
@@ -25,7 +24,7 @@
                            fitWidth="40.0"
                            pickOnBounds="true"
                            preserveRatio="true" />
-                <!-- Title + subtitle -->
+
                 <VBox spacing="5">
                     <Text text="Budget Tracker">
                         <font>
@@ -40,23 +39,26 @@
                     </Text>
                 </VBox>
 
-                <!-- Spacer -->
+                
                 <Pane HBox.hgrow="ALWAYS" />
 
-                <!-- + Add Transaction button -->
-                <Button fx:id="addTransactionButton" minWidth="150" mnemonicParsing="false" onAction="#openAddTransactionPopup" style="-fx-background-color: black; -fx-text-fill: white;" text="+ Add Transaction" />
+
+                <Button fx:id="addTransactionButton" minWidth="150" mnemonicParsing="false" onAction="#onAddTransaction" style="-fx-background-color: black; -fx-text-fill: white;" text="+ Add Transaction" />
+                <Button text="Log Out"
+                        mnemonicParsing="false"
+                        onAction="#handleLogout" />
+
             </HBox>
         </VBox>
     </top>
 
-    <!-- ========== CENTER: SUMMARY TILES + TABS ========== -->
     <center>
         <VBox spacing="20">
             <padding>
                 <Insets bottom="20" left="20" right="20" top="0" />
             </padding>
 
-            <!-- ===== SUMMARY TILES (4 columns) ===== -->
+
             <GridPane hgap="15" vgap="10">
                 <columnConstraints>
                     <ColumnConstraints percentWidth="25" />
@@ -65,7 +67,7 @@
                     <ColumnConstraints percentWidth="25" />
                 </columnConstraints>
 
-                <!-- Total Income -->
+
                 <VBox spacing="4" style="-fx-border-color: gray; -fx-padding: 8;" GridPane.columnIndex="0">
                     <Label text="Total Income" />
                     <Text fx:id="totalIncomeLabel" text="0.00">
@@ -79,7 +81,7 @@
                </Label>
                 </VBox>
 
-                <!-- Total Expenses -->
+
                 <VBox spacing="4" style="-fx-border-color: gray; -fx-padding: 8;" GridPane.columnIndex="1">
                     <Label text="Total Expenses" />
                     <Text fx:id="totalExpensesLabel" text="0.00">
@@ -93,7 +95,7 @@
                </Label>
                 </VBox>
 
-                <!-- Balance -->
+
                 <VBox spacing="4" style="-fx-border-color: gray; -fx-padding: 8;" GridPane.columnIndex="2">
                     <Label text="Balance" />
                     <Text fx:id="balanceLabel" fill="#27c62a" text="0.00">
@@ -107,7 +109,7 @@
                </Label>
                 </VBox>
 
-                <!-- Budget Remaining -->
+
                 <VBox spacing="4" style="-fx-border-color: gray; -fx-padding: 8;" GridPane.columnIndex="3">
                     <Label text="Budget Remaining" />
                     <Text fx:id="budgetRemainingLabel" text="0.00">
@@ -126,10 +128,9 @@
             </rowConstraints>
             </GridPane>
 
-            <!-- ===== MAIN TAB PANE WHERE SHOWS ALL TABS ===== -->
+
             <TabPane style="-fx-border-color: gray;" tabClosingPolicy="UNAVAILABLE" VBox.vgrow="ALWAYS">
 
-                <!-- Transactions tab -->
                 <Tab text="Transactions">
                     <content>
                         <VBox spacing="10">
@@ -142,14 +143,22 @@
                                     <Font size="11.0" />
                                 </font>
                             </Label>
-                            <!-- TODO: add transactions table here later -->
+
+                            <TableView fx:id="transactionsTable" prefHeight="400.0">
+                                <columns>
+                                    <TableColumn fx:id="colDate" text="Date" prefWidth="120.0"/>
+                                    <TableColumn fx:id="colType" text="Type" prefWidth="100.0"/>
+                                    <TableColumn fx:id="colCategory" text="Category" prefWidth="150.0"/>
+                                    <TableColumn fx:id="colDescription" text="Description" prefWidth="380.0"/>
+                                    <TableColumn fx:id="colAmount" text="Amount" prefWidth="120.0"/>
+                                </columns>
+                            </TableView>
+
                         </VBox>
                     </content>
                 </Tab>
 
 
-
-                <!-- Budgets tab -->
                 <Tab text="Budgets">
                     <content>
                         <VBox spacing="10">
@@ -157,7 +166,7 @@
                                 <Insets top="10" right="10" bottom="10" left="10"/>
                             </padding>
 
-                            <!-- Header row: title + plus button on the right -->
+
                             <HBox alignment="CENTER_LEFT" spacing="10">
                                 <Label text="Monthly Budgets">
                                     <font>
@@ -166,12 +175,12 @@
                                 </Label>
 
                                 <Pane HBox.hgrow="ALWAYS"/>
-                                <!-- This + opens the form -->
+
                                 <Button text="+" prefWidth="32" prefHeight="32"
-                                        onAction="#showBudgetForm"/>
+                                        onAction="#onAddBudget"/>
                             </HBox>
 
-                            <!-- Main budgets area (card-style box) -->
+
                             <VBox spacing="10"
                                   style="-fx-background-color: white;
                          -fx-border-color: #dddddd;
@@ -182,7 +191,7 @@
                                     <Insets top="15" right="20" bottom="15" left="20"/>
                                 </padding>
 
-                                <!-- Empty state (shown when no budgets exist) -->
+
                                 <VBox fx:id="budgetsEmptyStateBox"
                                       alignment="CENTER"
                                       spacing="5"
@@ -190,7 +199,7 @@
                                     <Label text="No budgets set. Click + to add your first budget!"/>
                                 </VBox>
 
-                                <!-- Budget form (hidden until + is clicked) -->
+
                                 <VBox fx:id="budgetFormBox"
                                       spacing="8"
                                       visible="false"
@@ -235,7 +244,7 @@
                                     </HBox>
                                 </VBox>
 
-                                <!-- Budget cards list (hidden until first budget is added) -->
+
                                 <VBox fx:id="budgetListBox"
                                       spacing="8"
                                       visible="false"
@@ -247,7 +256,7 @@
 
 
 
-                <!-- Savings tab -->
+
                 <Tab text="Savings">
                     <content>
                         <VBox spacing="10">
@@ -255,18 +264,18 @@
                                 <Insets bottom="10" left="10" right="10" top="10" />
                             </padding>
 
-                            <!-- Header -->
+
                             <HBox alignment="CENTER_LEFT" spacing="10">
                                 <Label text="Savings Goals">
                                     <font><Font size="11.0"/></font>
                                 </Label>
 
                                 <Pane HBox.hgrow="ALWAYS" />
-                                <!-- + opens the savings form -->
+
                                 <Button text="+" prefWidth="32" prefHeight="32" onAction="#showSavingsForm"/>
                             </HBox>
 
-                            <!-- Main box -->
+
                             <VBox spacing="10"
                                   style="-fx-background-color: white; -fx-border-color: #dddddd; -fx-border-radius: 8; -fx-background-radius: 8;"
                                   VBox.vgrow="ALWAYS">
@@ -274,12 +283,12 @@
                                     <Insets top="15" right="20" bottom="15" left="20"/>
                                 </padding>
 
-                                <!-- Empty state (shown when no goals exist) -->
+
                                 <VBox fx:id="savingsEmptyStateBox" alignment="CENTER" spacing="5" VBox.vgrow="ALWAYS">
                                     <Label text="No savings goals yet. Click + to create your first goal!" />
                                 </VBox>
 
-                                <!-- Savings form (hidden until + is clicked) -->
+
                                 <VBox fx:id="savingsFormBox" spacing="8" visible="false" managed="false">
                                     <Label text="Goal Name">
                                         <font><Font name="System Bold" size="10.0"/></font>
@@ -302,7 +311,7 @@
                                     </HBox>
                                 </VBox>
 
-                                <!-- Savings cards list (hidden until first goal is added) -->
+
                                 <VBox fx:id="savingsListBox" spacing="8" visible="false" managed="false" />
                             </VBox>
                         </VBox>
@@ -311,7 +320,7 @@
 
 
 
-                <!-- Bills tab -->
+
                 <Tab text="Bills">
                     <content>
                         <VBox spacing="10">
@@ -331,14 +340,14 @@
                                         <Font name="System Bold" size="10.0" />
                                     </font>
                                 </Label>
-                                <TextField promptText="e.g., Electricity" />
+                                <TextField fx:id="billNameField" promptText="e.g., Electricity" />
 
                                 <Label text="Amount">
                                     <font>
                                         <Font name="System Bold" size="10.0" />
                                     </font>
                                 </Label>
-                                <TextField promptText="0.00" />
+                                <TextField fx:id="billAmountField" promptText="0.00" />
 
                                 <Label text="Category">
                                     <font>
@@ -346,7 +355,7 @@
                                     </font>
                                 </Label>
 
-                                <ComboBox prefWidth="400">
+                                <ComboBox fx:id="billCategoryCombo" prefWidth="400">
                                     <items>
                                         <FXCollections fx:factory="observableArrayList">
                                             <String fx:value="Food and Dining" />
@@ -366,14 +375,21 @@
                                         <Font name="System Bold" size="10.0" />
                                     </font>
                                 </Label>
-                                <DatePicker prefWidth="400" />
+                                <DatePicker fx:id="billDueDatePicker" prefWidth="400" />
 
-                                <CheckBox text="Recurring Monthly" />
+                                <CheckBox fx:id="billRecurringCheckBox" text="Recurring Monthly" />
 
                                 <HBox spacing="10">
-                                    <Button style="-fx-background-color: black; -fx-text-fill: white;" text="Add Bill" />
-                                    <Button text="Cancel" />
+                                    <Button style="-fx-background-color: black; -fx-text-fill: white;"
+                                            text="Add Bill"
+                                            onAction="#handleAddBill" />
+                                    <Button text="Clear" onAction="#cancelBill" />
                                 </HBox>
+
+                                <Separator />
+
+
+                                <VBox fx:id="billsListBox" spacing="8" />
                             </VBox>
                         </VBox>
                     </content>
@@ -381,7 +397,7 @@
 
 
 
-                <!-- Reports tab -->
+                
                 <Tab text="Reports">
                     <content>
                         <VBox spacing="10">
@@ -389,12 +405,12 @@
                                 <Insets top="10" right="10" bottom="10" left="10"/>
                             </padding>
 
-                            <!-- Title -->
+                            
                             <Label text="Spending Reports">
                                 <font><Font size="13.0"/></font>
                             </Label>
 
-                            <!-- By Category / Trends toggle bar -->
+                            
                             <HBox spacing="8">
 
                                 <ToggleButton fx:id="byCategoryToggle"
@@ -415,14 +431,14 @@
                             </HBox>
 
 
-                            <!-- Chart area -->
+                            
                             <StackPane VBox.vgrow="ALWAYS">
 
-                                <!-- Category pie chart (default visible if data is entered, can test it)-->
+                                
                                 <PieChart fx:id="categoryChart"
                                           animated="true" />
 
-                                <!-- Trends line chart (hidden until 'Trends' selected) -->
+                                
                                 <LineChart fx:id="trendsChart"
                                            animated="true"
                                            visible="false"

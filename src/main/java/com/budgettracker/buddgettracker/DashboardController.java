@@ -1,415 +1,942 @@
 package com.budgettracker.buddgettracker;
-import javafx.scene.control.*;
-import javafx.scene.text.Text;
+
+import javafx.collections.FXCollections;
+import javafx.collections.ObservableList;
 import javafx.fxml.FXML;
 import javafx.fxml.FXMLLoader;
 import javafx.scene.Scene;
 import javafx.scene.chart.LineChart;
-import javafx.stage.Modality;
-import javafx.stage.Stage;
+import javafx.scene.chart.PieChart;
+import javafx.scene.chart.XYChart;
+import javafx.scene.control.*;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import java.net.URL;
-import javafx.scene.chart.PieChart;
-import javafx.scene.layout.VBox;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.Region;
-import javafx.scene.layout.Priority;
-import javafx.geometry.Pos;
+import javafx.scene.layout.*;
+import javafx.stage.Modality;
+import javafx.stage.Stage;
+import javafx.scene.control.cell.PropertyValueFactory;
 import java.time.LocalDate;
+import com.google.cloud.firestore.Firestore;
+import com.google.api.core.ApiFuture;
+import com.google.cloud.firestore.QuerySnapshot;
+import com.google.cloud.firestore.QueryDocumentSnapshot;
+import javafx.event.ActionEvent;
+import javafx.scene.Node;
+import javafx.scene.Parent;
+
+
+
+
+
+
+import java.net.URL;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class DashboardController {
-    //images
+
+    
     @FXML private ImageView walletIcon;
-
-    // Texts from the four summary tiles
-    @FXML private Text totalIncomeLabel;
-    @FXML private Text totalExpensesLabel;
-    @FXML private Text balanceLabel;
-    @FXML private Text budgetRemainingLabel;
     @FXML private Button addTransactionButton;
+    @FXML private TableView<Transaction> transactionsTable;
+    @FXML private TableColumn<Transaction, LocalDate> colDate;
+    @FXML private TableColumn<Transaction, String> colType;
+    @FXML private TableColumn<Transaction, String> colCategory;
+    @FXML private TableColumn<Transaction, String> colDescription;
+    @FXML private TableColumn<Transaction, Double> colAmount;
+    @FXML private TextField billNameField;
+    @FXML private TextField billAmountField;
+    @FXML private ComboBox<String> billCategoryCombo;
+    @FXML private DatePicker billDueDatePicker;
+    @FXML private CheckBox billRecurringCheckBox;
+    @FXML private VBox billsListBox;
+    private final FirestoreContext firestoreContext = new FirestoreContext();
+    private Firestore db;
 
-    //Part of Budget Summary Title
-    private double totalIncome  = 0.0;
-    private double totalExpenses = 0.0;
-    private double totalBudgetLimit = 0.0; //sum of budget summary
-    @FXML private Label budgetPercentLabel; // "0% used"
+    
+    @FXML private javafx.scene.text.Text totalIncomeLabel;
+    @FXML private javafx.scene.text.Text totalExpensesLabel;
+    @FXML private javafx.scene.text.Text balanceLabel;
+    @FXML private javafx.scene.text.Text budgetRemainingLabel;
+    @FXML private Label budgetPercentLabel;
 
-    // Savings tab controls
+    
+    @FXML private VBox budgetsEmptyStateBox;
+    @FXML private VBox budgetFormBox;
+    @FXML private ComboBox<String> budgetCategoryCombo;
+    @FXML private TextField budgetAmountField;
+    @FXML private VBox budgetListBox;
+
+    
     @FXML private VBox savingsEmptyStateBox;
     @FXML private VBox savingsFormBox;
-    @FXML private VBox savingsListBox;
     @FXML private TextField savingsNameField;
     @FXML private TextField savingsAmountField;
     @FXML private DatePicker savingsDeadlinePicker;
+    @FXML private VBox savingsListBox;
 
-
-    // Budgets tab controls
-    @FXML private VBox budgetsEmptyStateBox;
-    @FXML private VBox budgetFormBox;
-    @FXML private VBox budgetListBox;
-    @FXML private ComboBox<String> budgetCategoryCombo;
-    @FXML private TextField budgetAmountField;
-
-    // Reports tab controls
+    
     @FXML private ToggleButton byCategoryToggle;
     @FXML private ToggleButton trendsToggle;
-    @FXML private PieChart categoryChart;            // was BarChart<String, Number>
+    @FXML private ToggleGroup reportViewToggle;
+    @FXML private PieChart categoryChart;
     @FXML private LineChart<String, Number> trendsChart;
+
+    
+    private final ObservableList<Transaction> transactions = FXCollections.observableArrayList();
+    private double totalIncome = 0;
+    private double totalExpenses = 0;
+
+    
+    private final Map<String, Double> budgetLimits = new HashMap<>();
+    private double totalBudgetLimit = 0;
+    private final ObservableList<Bill> bills = FXCollections.observableArrayList();
+    private final ObservableList<SavingGoal> savingGoals = FXCollections.observableArrayList();
+    private String currentUserEmail;
+
+    public void setCurrentUserEmail(String email) {
+        this.currentUserEmail = email;
+        if (db != null) {
+            loadUserData();
+        }
+    }
 
 
 
     @FXML
-    //load images and summary titles
-    private void initialize() {
-        // Load icon
+    public void initialize() {
+        
         URL iconUrl = getClass().getResource("images/Wallet.png");
         if (iconUrl != null) {
             walletIcon.setImage(new Image(iconUrl.toExternalForm()));
-        } else {
-            System.out.println("⚠ Wallet icon not found at images/Wallet.png");
         }
-        //existing summary label setup
+        setupTransactionsTable();
+        
+        setVisibleManaged(budgetFormBox, false);
+        setVisibleManaged(budgetListBox, false);
+        setVisibleManaged(savingsFormBox, false);
+        setVisibleManaged(savingsListBox, false);
+        setVisibleManaged(budgetsEmptyStateBox, true);
+        setVisibleManaged(savingsEmptyStateBox, true);
+
+        
+        if (byCategoryToggle != null) {
+            byCategoryToggle.setSelected(true);
+        }
+        if (reportViewToggle != null) {
+            reportViewToggle.selectedToggleProperty().addListener((obs, oldT, newT) -> updateReportView());
+        }
+        updateReportView();
+
         updateSummaryLabels();
+        updateCharts();
+        db = firestoreContext.firebase();
+    }
+    private void setupTransactionsTable() {
+        if (transactionsTable == null) return;
 
-        //reports tab setup
-        setupReportToggle();
+        colDate.setCellValueFactory(new PropertyValueFactory<>("date"));
+        colType.setCellValueFactory(new PropertyValueFactory<>("type"));
+        colCategory.setCellValueFactory(new PropertyValueFactory<>("category"));
+        colDescription.setCellValueFactory(new PropertyValueFactory<>("description"));
+        colAmount.setCellValueFactory(new PropertyValueFactory<>("amount"));
+
+        transactionsTable.setItems(transactions);
     }
 
+    
+    private void setVisibleManaged(Region node, boolean value) {
+        if (node != null) {
+            node.setVisible(value);
+            node.setManaged(value);
+        }
+    }
+    private void loadUserData() {
+        if (db == null || currentUserEmail == null) return;
 
-    //TOTAL SUMMARY TITLES OF THE TABS
-    private void updateSummaryLabels() {
-        double balance = totalIncome - totalExpenses;
+        try {
+            loadTransactionsFromFirestore();
+            loadBudgetsFromFirestore();
+            loadBillsFromFirestore();
+            loadSavingsFromFirestore();
 
-        double budgetRemaining;
-        if (totalBudgetLimit > 0) {
-            // Use budgets: remaining = total budget - total expenses
-            budgetRemaining = totalBudgetLimit - totalExpenses;
-            double usedPercent = (totalExpenses / totalBudgetLimit) * 100.0;
-            if (budgetPercentLabel != null) {
-                budgetPercentLabel.setText(String.format("%.0f%% used", usedPercent));
-            }
-        } else {
-            // No budgets set yet: fall back to balance
-            budgetRemaining = balance;
-            if (budgetPercentLabel != null) {
-                budgetPercentLabel.setText("0% used");
+            updateSummaryLabels();
+            updateBudgetProgress();
+            updateCharts();
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert("Firebase", "Error loading your data from the cloud.");
+        }
+    }
+    private void loadTransactionsFromFirestore() throws Exception {
+        ApiFuture<QuerySnapshot> future = db.collection("transactions")
+                .whereEqualTo("userEmail", currentUserEmail)
+                .get();
+        QuerySnapshot snapshot = future.get();
+
+        transactions.clear();
+        totalIncome = 0;
+        totalExpenses = 0;
+
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            String type = doc.getString("type");
+            String category = doc.getString("category");
+            String description = doc.getString("description");
+            Double amount = doc.getDouble("amount");
+            String dateStr = doc.getString("date");
+
+            if (amount == null) amount = 0.0;
+            LocalDate date = (dateStr != null && !dateStr.isBlank())
+                    ? LocalDate.parse(dateStr)
+                    : LocalDate.now();
+
+            Transaction t = new Transaction(type, category, description, amount, date);
+            transactions.add(t);
+
+            if ("Income".equalsIgnoreCase(type)) {
+                totalIncome += amount;
+            } else {
+                totalExpenses += amount;
             }
         }
 
-        totalIncomeLabel.setText(String.format("$%.2f", totalIncome));
-        totalExpensesLabel.setText(String.format("$%.2f", totalExpenses));
-        balanceLabel.setText(String.format("$%.2f", balance));
-        budgetRemainingLabel.setText(String.format("$%.2f", budgetRemaining));
+        if (transactionsTable != null) {
+            transactionsTable.setItems(transactions);
+        }
+    }
+    private void loadBudgetsFromFirestore() throws Exception {
+        ApiFuture<QuerySnapshot> future = db.collection("budgets")
+                .whereEqualTo("userEmail", currentUserEmail)
+                .get();
+        QuerySnapshot snapshot = future.get();
+
+        budgetLimits.clear();
+        totalBudgetLimit = 0;
+
+        if (budgetListBox != null) {
+            budgetListBox.getChildren().clear();
+        }
+
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            String category = doc.getString("category");
+            Double limit = doc.getDouble("limit");
+            if (category == null || limit == null) continue;
+
+            budgetLimits.put(category, limit);
+            totalBudgetLimit += limit;
+
+            
+            addBudgetCard(category, limit);
+        }
+
+        if (budgetListBox != null) {
+            boolean empty = budgetListBox.getChildren().isEmpty();
+            setVisibleManaged(budgetsEmptyStateBox, empty);
+            setVisibleManaged(budgetListBox, !empty);
+        }
+    }
+    private void loadBillsFromFirestore() throws Exception {
+        ApiFuture<QuerySnapshot> future = db.collection("bills")
+                .whereEqualTo("userEmail", currentUserEmail)
+                .get();
+        QuerySnapshot snapshot = future.get();
+
+        bills.clear();
+        if (billsListBox != null) {
+            billsListBox.getChildren().clear();
+        }
+
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            String name = doc.getString("name");
+            Double amount = doc.getDouble("amount");
+            String category = doc.getString("category");
+            String dueStr = doc.getString("dueDate");
+            Boolean recurring = doc.getBoolean("recurring");
+            Boolean paid = doc.getBoolean("paid");
+            String paidDateStr = doc.getString("paidDate");
+
+            if (name == null || amount == null || category == null) continue;
+
+            LocalDate dueDate = (dueStr != null && !dueStr.equals("noDate") && !dueStr.isBlank())
+                    ? LocalDate.parse(dueStr)
+                    : null;
+
+            Bill bill = new Bill(name, amount, category, dueDate,
+                    recurring != null && recurring);
+
+            if (paid != null && paid) {
+                bill.setPaid(true);
+                if (paidDateStr != null && !paidDateStr.isBlank()) {
+                    bill.setPaidDate(LocalDate.parse(paidDateStr));
+                }
+            }
+
+            bills.add(bill);
+            addBillCard(bill);   
+        }
+    }
+    private void loadSavingsFromFirestore() throws Exception {
+        ApiFuture<QuerySnapshot> future = db.collection("savings")
+                .whereEqualTo("userEmail", currentUserEmail)
+                .get();
+        QuerySnapshot snapshot = future.get();
+
+        savingGoals.clear();
+        if (savingsListBox != null) {
+            savingsListBox.getChildren().clear();
+        }
+
+        for (QueryDocumentSnapshot doc : snapshot.getDocuments()) {
+            String name = doc.getString("name");
+            Double target = doc.getDouble("targetAmount");
+            Double savedAmount = doc.getDouble("savedAmount");
+            String deadlineStr = doc.getString("deadline");
+
+            if (name == null || target == null) continue;
+
+            LocalDate deadline = (deadlineStr != null && !deadlineStr.isBlank())
+                    ? LocalDate.parse(deadlineStr)
+                    : null;
+
+            SavingGoal goal = new SavingGoal(name, target, deadline);
+            if (savedAmount != null && savedAmount > 0) {
+                goal.addMoney(savedAmount);    
+            }
+
+            savingGoals.add(goal);
+            addSavingGoalCard(goal);          
+        }
+
+        if (savingsListBox != null) {
+            boolean empty = savingsListBox.getChildren().isEmpty();
+            setVisibleManaged(savingsEmptyStateBox, empty);
+            setVisibleManaged(savingsListBox, !empty);
+        }
     }
 
+    
 
-    //IF Press + ACTION CLICK FOR TRANSACTION THEN POPUP ....
-    /**   ADD to transaction tab (figma)*/
     @FXML
-    private void openAddTransactionPopup() {
+    private void onAddTransaction() {
         try {
-            FXMLLoader loader = new FXMLLoader(
-                    getClass().getResource("transaction_form.fxml"));
-            Scene scene = new Scene(loader.load());
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("Transaction_form.fxml"));
+            VBox formRoot = loader.load();
 
-            // Give the popup a reference to this controller
             TransactionFormController controller = loader.getController();
             controller.setDashboardController(this);
 
-            Stage popup = new Stage();
-            Stage owner = (Stage) addTransactionButton
-                    .getScene()
-                    .getWindow();
-            popup.initOwner(owner);
-            popup.initModality(Modality.APPLICATION_MODAL);
-            popup.setTitle("Add Transaction");
-            popup.setScene(scene);
-            popup.setResizable(false);
-            popup.showAndWait();
+            Stage popupStage = new Stage();
+            popupStage.initModality(Modality.APPLICATION_MODAL);
+            popupStage.setTitle("Add Transaction");
+            popupStage.setScene(new Scene(formRoot));
+            popupStage.showAndWait();
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 
-
-    /** Called from TransactionFormController when the form is submitted */
+    
     public void addTransaction(Transaction transaction) {
-        if (transaction == null) return;
+        transactions.add(transaction);
 
         if ("Income".equalsIgnoreCase(transaction.getType())) {
             totalIncome += transaction.getAmount();
         } else {
             totalExpenses += transaction.getAmount();
         }
+        if (transactionsTable != null) {
+            transactionsTable.setItems(transactions);
+        }
+
         updateSummaryLabels();
+        updateBudgetProgress();
+        updateCharts();
+        saveTransactionToFirestore(transaction);
     }
+    private void saveTransactionToFirestore(Transaction t) {
+        if (db == null) return;
 
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("type", t.getType());
+            data.put("category", t.getCategory());
+            data.put("description", t.getDescription());
+            data.put("amount", t.getAmount());
+            data.put("date", t.getDate().toString());
 
-    // Budget tab
-    @FXML
-    private void showBudgetForm() {
-        // Show the form
-        budgetFormBox.setVisible(true);
-        budgetFormBox.setManaged(true);
+            if (currentUserEmail != null) {
+                data.put("userEmail", currentUserEmail);
+            }
 
-        // Hide the empty state (if it was showing)
-        budgetsEmptyStateBox.setVisible(false);
-        budgetsEmptyStateBox.setManaged(false);
-    }
-    @FXML
-    private void cancelBudgetForm() {
-        // Hide the form
-        budgetFormBox.setVisible(false);
-        budgetFormBox.setManaged(false);
+            
+            db.collection("transactions").add(data);   
 
-        // If there are still no budgets, show the empty message again (figma)
-        if (budgetListBox.getChildren().isEmpty()) {
-            budgetsEmptyStateBox.setVisible(true);
-            budgetsEmptyStateBox.setManaged(true);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
+
+
+
+    private void updateSummaryLabels() {
+        double balance = totalIncome - totalExpenses;
+        double budgetRemaining;
+
+        if (totalBudgetLimit > 0) {
+            budgetRemaining = totalBudgetLimit - totalExpenses;
+        } else {
+            budgetRemaining = balance;
+        }
+
+        if (totalIncomeLabel != null) {
+            totalIncomeLabel.setText(String.format("$%.2f", totalIncome));
+        }
+        if (totalExpensesLabel != null) {
+            totalExpensesLabel.setText(String.format("$%.2f", totalExpenses));
+        }
+        if (balanceLabel != null) {
+            balanceLabel.setText(String.format("$%.2f", balance));
+        }
+        if (budgetRemainingLabel != null) {
+            budgetRemainingLabel.setText(String.format("$%.2f", budgetRemaining));
+        }
+
+        if (budgetPercentLabel != null) {
+            if (totalBudgetLimit > 0) {
+                double usedPercent = (totalExpenses / totalBudgetLimit) * 100.0;
+                budgetPercentLabel.setText(String.format("%.0f%% used", usedPercent));
+            } else {
+                budgetPercentLabel.setText("0% used");
+            }
+        }
+    }
+
+    
+
+    @FXML
+    private void onAddBudget() {
+        
+        setVisibleManaged(budgetFormBox, true);
+        setVisibleManaged(budgetsEmptyStateBox, false);
+    }
+
     @FXML
     private void handleAddBudget() {
         String category = budgetCategoryCombo.getValue();
-        String amountText = budgetAmountField.getText();
+        String amountText = budgetAmountField.getText().trim();
 
-        if (category == null || category.isBlank()) {
-            // you could show an Alert here if need
+        if (category == null || category.isBlank() || amountText.isBlank()) {
+            showAlert("Budget", "Please select category and enter amount.");
             return;
         }
+
         double amount;
         try {
             amount = Double.parseDouble(amountText);
-        } catch (NumberFormatException ex) {
-            // invalid number, you could show an Alert
+        } catch (NumberFormatException e) {
+            showAlert("Budget", "Amount must be a valid number.");
             return;
         }
-        // Increase the total budget limit
-        totalBudgetLimit += amount;
-        // Create a simple "card" for the budget
+
+        if (amount <= 0) {
+            showAlert("Budget", "Amount must be greater than zero.");
+            return;
+        }
+
+        
+        budgetLimits.put(category, budgetLimits.getOrDefault(category, 0.0) + amount);
+        totalBudgetLimit = budgetLimits.values().stream().mapToDouble(Double::doubleValue).sum();
+
+        addBudgetCard(category, budgetLimits.get(category));
+
+        
+        saveBudgetToFirestore(category, budgetLimits.get(category));
+
+        budgetCategoryCombo.getSelectionModel().clearSelection();
+        budgetAmountField.clear();
+
+        setVisibleManaged(budgetFormBox, false);
+        setVisibleManaged(budgetListBox, true);
+
+        updateSummaryLabels();
+        updateBudgetProgress();
+        updateCharts();
+    }
+    private void saveBudgetToFirestore(String category, double limit) {
+        if (db == null) return;
+
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("category", category);
+            data.put("limit", limit);
+
+            if (currentUserEmail != null) {
+                data.put("userEmail", currentUserEmail);
+            }
+
+            String docId = (currentUserEmail != null ? currentUserEmail + "_" : "") + category;
+
+            db.collection("budgets").document(docId).set(data);  
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    @FXML
+    private void cancelBudgetForm() {
+        setVisibleManaged(budgetFormBox, false);
+        if (budgetListBox.getChildren().isEmpty()) {
+            setVisibleManaged(budgetsEmptyStateBox, true);
+        }
+    }
+
+    private void addBudgetCard(String category, double limit) {
+        if (budgetListBox == null) return;
+
         HBox card = new HBox(10);
-        card.setStyle("-fx-background-color: #f7f7f7; -fx-padding: 12; -fx-background-radius: 8;");
-        // Store the limit for this card
-        card.setUserData(amount);
+        card.setStyle("-fx-background-color: #f7f7f7; -fx-padding: 10; -fx-background-radius: 8;");
+
         VBox textBox = new VBox(3);
         Label nameLabel = new Label(category);
         nameLabel.setStyle("-fx-font-weight: bold;");
-        Label amountLabel = new Label(String.format("$0.00 of $%.2f", amount));
+        Label amountLabel = new Label(String.format("$0.00 of $%.2f", limit));
         Label percentLabel = new Label("0% used");
         textBox.getChildren().addAll(nameLabel, amountLabel, percentLabel);
+
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button deleteBtn = new Button("🗑");
-        deleteBtn.setOnAction(e -> {
-            // subtract this card's budget from total
-            Object data = card.getUserData();
-            if (data instanceof Double) {
-                totalBudgetLimit -= (Double) data;
-                if (totalBudgetLimit < 0) totalBudgetLimit = 0;
-                updateSummaryLabels();
-            }
+        card.getChildren().addAll(textBox, spacer);
+        card.setUserData(limit); 
 
-            budgetListBox.getChildren().remove(card);
-            if (budgetListBox.getChildren().isEmpty()) {
-                budgetsEmptyStateBox.setVisible(true);
-                budgetsEmptyStateBox.setManaged(true);
-            }
-        });
-        card.getChildren().addAll(textBox, spacer, deleteBtn);
-        // Add the card to the list
         budgetListBox.getChildren().add(card);
-        // Show the list, hide empty state & hide form
-        budgetListBox.setVisible(true);
-        budgetListBox.setManaged(true);
-        budgetsEmptyStateBox.setVisible(false);
-        budgetsEmptyStateBox.setManaged(false);
-        budgetFormBox.setVisible(false);
-        budgetFormBox.setManaged(false);
-        // Clear form for next time
-        budgetAmountField.clear();
-        //updates the summary of budget
-        updateSummaryLabels();
     }
 
+    private void updateBudgetProgress() {
+        if (budgetListBox == null) return;
 
+        
+        Map<String, Double> spentByCategory = new HashMap<>();
+        for (Transaction t : transactions) {
+            if (!"Expense".equalsIgnoreCase(t.getType())) continue;
+            spentByCategory.merge(t.getCategory(), t.getAmount(), Double::sum);
+        }
 
-    // SAVING METHODS: Show savings creation form
+        for (javafx.scene.Node node : budgetListBox.getChildren()) {
+            if (!(node instanceof HBox card)) continue;
+            if (card.getChildren().isEmpty()) continue;
+
+            VBox textBox = (VBox) card.getChildren().get(0);
+            Label nameLabel = (Label) textBox.getChildren().get(0);
+            Label amountLabel = (Label) textBox.getChildren().get(1);
+            Label percentLabel = (Label) textBox.getChildren().get(2);
+
+            String category = nameLabel.getText();
+            double limit = ((Number) card.getUserData()).doubleValue();
+            double spent = spentByCategory.getOrDefault(category, 0.0);
+
+            double percent = limit > 0 ? (spent / limit) * 100.0 : 0.0;
+
+            amountLabel.setText(String.format("$%.2f of $%.2f", spent, limit));
+            percentLabel.setText(String.format("%.0f%% used", percent));
+        }
+    }
+
+    
+
     @FXML
     private void showSavingsForm() {
-        if (savingsFormBox != null) {
-            savingsFormBox.setVisible(true);
-            savingsFormBox.setManaged(true);
-        }
-        if (savingsEmptyStateBox != null) {
-            savingsEmptyStateBox.setVisible(false);
-            savingsEmptyStateBox.setManaged(false);
-        }
-        if (savingsListBox != null) {
-            boolean hasItems = !savingsListBox.getChildren().isEmpty();
-            savingsListBox.setVisible(hasItems);
-            savingsListBox.setManaged(hasItems);
-        }
+        setVisibleManaged(savingsFormBox, true);
+        setVisibleManaged(savingsEmptyStateBox, false);
     }
 
-    // Cancel savings form (return to empty state if nothing exists)
-    @FXML
-    private void cancelSavingsForm() {
-        if (savingsFormBox != null) {
-            savingsFormBox.setVisible(false);
-            savingsFormBox.setManaged(false);
-        }
-        if (savingsListBox != null && savingsListBox.getChildren().isEmpty()) {
-            savingsEmptyStateBox.setVisible(true);
-            savingsEmptyStateBox.setManaged(true);
-        } else if (savingsListBox != null) {
-            boolean has = !savingsListBox.getChildren().isEmpty();
-            savingsListBox.setVisible(has);
-            savingsListBox.setManaged(has);
-        }
-    }
-
-    // Add a saving goal (creates card with progress + add funds)
     @FXML
     private void handleAddSaving() {
-        String name = (savingsNameField != null) ? savingsNameField.getText() : null;
-        String amountStr = (savingsAmountField != null) ? savingsAmountField.getText() : null;
-        LocalDate deadline = (savingsDeadlinePicker != null) ? savingsDeadlinePicker.getValue() : null;
+        String name = savingsNameField.getText().trim();
+        String amountText = savingsAmountField.getText().trim();
+        LocalDate deadline = savingsDeadlinePicker.getValue();
 
-        if (name == null || name.isBlank()) return;
-
-        double target;
-        try {
-            target = Double.parseDouble((amountStr == null || amountStr.isBlank()) ? "0" : amountStr);
-        } catch (NumberFormatException ex) {
+        if (name.isEmpty() || amountText.isEmpty()) {
+            showAlert("Savings", "Please enter goal name and amount.");
             return;
         }
 
-        // card container
-        VBox card = new VBox(6);
-        card.setStyle("-fx-background-color: #f7f7f7; -fx-padding: 12; -fx-background-radius: 8; -fx-border-radius:8;");
-
-        // header: title, optional deadline, delete
-        HBox header = new HBox(8);
-        VBox titleBox = new VBox(2);
-        Label title = new Label(name);
-        title.setStyle("-fx-font-weight: bold;");
-        titleBox.getChildren().add(title);
-        if (deadline != null) {
-            Label dl = new Label("Deadline: " + deadline.toString());
-            dl.setStyle("-fx-font-size: 11px; -fx-text-fill:#666;");
-            titleBox.getChildren().add(dl);
+        double target;
+        try {
+            target = Double.parseDouble(amountText);
+        } catch (NumberFormatException e) {
+            showAlert("Savings", "Amount must be a valid number.");
+            return;
         }
+
+        SavingGoal goal = new SavingGoal(name, target, deadline);
+        savingGoals.add(goal);
+
+        
+        addSavingGoalCard(goal);
+
+        
+        saveSavingGoalToFirestore(goal);
+
+        
+        savingsNameField.clear();
+        savingsAmountField.clear();
+        savingsDeadlinePicker.setValue(null);
+
+        setVisibleManaged(savingsFormBox, false);
+        setVisibleManaged(savingsListBox, true);
+
+    }
+    private double getCurrentBalance() {
+        return totalIncome - totalExpenses;
+    }
+
+    private void updateSavingProgressLabel(SavingGoal goal, Label progressLabel) {
+        double saved = goal.getSavedAmount();
+        double target = goal.getTargetAmount();
+        double percent = target > 0 ? (saved / target) * 100.0 : 0.0;
+
+        progressLabel.setText(
+                String.format("Saved: $%.2f of $%.2f (%.0f%%)", saved, target, percent)
+        );
+    }
+
+    private void showAddMoneyDialog(SavingGoal goal, Label progressLabel) {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("Add Money");
+        dialog.setHeaderText("Add money to: " + goal.getName());
+        dialog.setContentText("Amount to add:");
+
+        dialog.showAndWait().ifPresent(input -> {
+            try {
+                double amount = Double.parseDouble(input);
+                if (amount <= 0) {
+                    showAlert("Savings", "Amount must be greater than 0.");
+                    return;
+                }
+
+                double balance = getCurrentBalance();
+                if (amount > balance) {
+                    showAlert("Savings",
+                            "Not enough balance. Available: $" + String.format("%.2f", balance));
+                    return;
+                }
+
+                
+                Transaction tx = new Transaction(
+                        "Expense",
+                        "Savings",                     
+                        "Saving goal: " + goal.getName(),
+                        amount,
+                        java.time.LocalDate.now()
+                );
+                addTransaction(tx); 
+
+                
+                goal.addMoney(amount);
+                updateSavingProgressLabel(goal, progressLabel);
+
+                
+                saveSavingGoalToFirestore(goal);
+
+            } catch (NumberFormatException ex) {
+                showAlert("Savings", "Please enter a valid number.");
+            }
+        });
+    }
+
+
+    private void addSavingGoalCard(SavingGoal goal) {
+        if (savingsListBox == null) return;
+
+        HBox card = new HBox(10);
+        card.setStyle("-fx-background-color: #f7f7f7; -fx-padding: 10; -fx-background-radius: 8;");
+
+        VBox textBox = new VBox(3);
+        Label nameLabel = new Label(goal.getName());
+        nameLabel.setStyle("-fx-font-weight: bold;");
+
+        Label targetLabel = new Label(String.format("Target: $%.2f", goal.getTargetAmount()));
+        Label deadlineLabel = new Label(
+                goal.getDeadline() != null ? "Deadline: " + goal.getDeadline() : "No deadline"
+        );
+
+        Label progressLabel = new Label();   
+        updateSavingProgressLabel(goal, progressLabel);
+
+        textBox.getChildren().addAll(nameLabel, targetLabel, deadlineLabel, progressLabel);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        Button deleteBtn = new Button("🗑");
-        deleteBtn.setOnAction(e -> {
-            savingsListBox.getChildren().remove(card);
-            if (savingsListBox.getChildren().isEmpty()) {
-                savingsEmptyStateBox.setVisible(true);
-                savingsEmptyStateBox.setManaged(true);
-            }
-        });
+        Button addMoneyButton = new Button("Add Money");
+        addMoneyButton.setOnAction(e -> showAddMoneyDialog(goal, progressLabel));
 
-        header.getChildren().addAll(titleBox, spacer, deleteBtn);
-
-        // amount label + progress
-        Label amountLabel = new Label(String.format("$0.00 / $%.2f", target));
-        ProgressBar progressBar = new ProgressBar(0);
-        progressBar.setPrefWidth(600);
-        Label pctLabel = new Label("0%");
-        pctLabel.setStyle("-fx-text-fill: #666;");
-
-        HBox progressRow = new HBox(10, progressBar, pctLabel);
-        progressRow.setAlignment(Pos.CENTER_LEFT);
-
-        // add funds controls
-        HBox addFundsRow = new HBox(8);
-        TextField addField = new TextField();
-        addField.setPromptText("Add amount");
-        addField.setPrefWidth(200);
-        Button addFundsBtn = new Button("Add Funds");
-        addFundsRow.getChildren().addAll(addField, addFundsBtn);
-
-        // store state: double[0]=saved, double[1]=target
-        double[] state = new double[]{0.0, target};
-        card.setUserData(state);
-
-        addFundsBtn.setOnAction(ev -> {
-            String toAddStr = addField.getText();
-            double toAdd;
-            try {
-                toAdd = Double.parseDouble((toAddStr == null || toAddStr.isBlank()) ? "0" : toAddStr);
-            } catch (NumberFormatException ex) {
-                return;
-            }
-            if (toAdd <= 0) return;
-            Object ud = card.getUserData();
-            if (ud instanceof double[]) {
-                double[] st = (double[]) ud;
-                st[0] += toAdd;
-                if (st[0] > st[1]) st[0] = st[1];
-                amountLabel.setText(String.format("$%.2f / $%.2f", st[0], st[1]));
-                double pct = (st[1] <= 0) ? 0 : (st[0] / st[1]);
-                progressBar.setProgress(Math.max(0.0, Math.min(1.0, pct)));
-                pctLabel.setText(String.format("%d%%", (int) Math.round(pct * 100.0)));
-                addField.clear();
-            }
-        });
-
-        card.getChildren().addAll(header, amountLabel, progressRow, addFundsRow);
+        card.getChildren().addAll(textBox, spacer, addMoneyButton);
 
         savingsListBox.getChildren().add(card);
-        savingsListBox.setVisible(true);
-        savingsListBox.setManaged(true);
-
-        // hide form & empty state
-        savingsFormBox.setVisible(false);
-        savingsFormBox.setManaged(false);
-        savingsEmptyStateBox.setVisible(false);
-        savingsEmptyStateBox.setManaged(false);
-
-        // clear form
-        savingsNameField.clear();
-        savingsAmountField.clear();
-        savingsDeadlinePicker.setValue(null);
     }
 
+    private void saveSavingGoalToFirestore(SavingGoal goal) {
+        if (db == null) {
+            System.out.println("Firestore not initialized; skipping save.");
+            return;
+        }
 
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("name", goal.getName());
+            data.put("targetAmount", goal.getTargetAmount());
+            data.put("savedAmount", goal.getSavedAmount());
+            data.put("deadline",
+                    goal.getDeadline() != null ? goal.getDeadline().toString() : null);
 
-    //method for the report tab
-    private void setupReportToggle() {
-        if (categoryChart != null && trendsChart != null) {
-            // default
-            showCategoryChart();
+            if (currentUserEmail != null) {
+                data.put("userEmail", currentUserEmail);
+            }
 
-            byCategoryToggle.selectedProperty().addListener((obs, wasSelected, isSelected) -> {
-                if (isSelected) {
-                    showCategoryChart();
-                }
-            });
+            String docId = (currentUserEmail != null ? currentUserEmail + "_" : "") + goal.getId();
 
-            trendsToggle.selectedProperty().addListener((obs, wasSelected, isSelected) -> {
-                if (isSelected) {
-                    showTrendsChart();
-                }
-            });
+            db.collection("savings").document(docId).set(data);  
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            showAlert("Firebase", "Error saving saving goal to Firestore.");
         }
     }
-    private void showCategoryChart() {
-        categoryChart.setVisible(true);
-        categoryChart.setManaged(true);
-        trendsChart.setVisible(false);
-        trendsChart.setManaged(false);
+
+
+
+
+
+    @FXML
+    private void cancelSavingsForm() {
+        setVisibleManaged(savingsFormBox, false);
+        if (savingsListBox.getChildren().isEmpty()) {
+            setVisibleManaged(savingsEmptyStateBox, true);
+        }
     }
-    private void showTrendsChart() {
-        trendsChart.setVisible(true);
-        trendsChart.setManaged(true);
-        categoryChart.setVisible(false);
-        categoryChart.setManaged(false);
+
+    
+
+    private void updateReportView() {
+        boolean showCategory = true;
+        if (reportViewToggle != null && reportViewToggle.getSelectedToggle() != null) {
+            showCategory = reportViewToggle.getSelectedToggle() == byCategoryToggle;
+        }
+
+        setVisibleManaged(categoryChart, showCategory);
+        setVisibleManaged(trendsChart, !showCategory);
+    }
+
+    private void updateCharts() {
+        updateCategoryChart();
+        updateTrendsChart();
+    }
+
+    private void updateCategoryChart() {
+        if (categoryChart == null) return;
+
+        categoryChart.getData().clear();
+
+        Map<String, Double> byCategory = new HashMap<>();
+        for (Transaction t : transactions) {
+            if (!"Expense".equalsIgnoreCase(t.getType())) continue;
+            byCategory.merge(t.getCategory(), t.getAmount(), Double::sum);
+        }
+
+        for (Map.Entry<String, Double> e : byCategory.entrySet()) {
+            categoryChart.getData().add(new PieChart.Data(e.getKey(), e.getValue()));
+        }
+    }
+
+    private void updateTrendsChart() {
+        if (trendsChart == null) return;
+
+        trendsChart.getData().clear();
+
+        Map<String, Double> byDate = new HashMap<>();
+        for (Transaction t : transactions) {
+            if (!"Expense".equalsIgnoreCase(t.getType())) continue;
+            String key = t.getDate().toString();
+            byDate.merge(key, t.getAmount(), Double::sum);
+        }
+
+        XYChart.Series<String, Number> series = new XYChart.Series<>();
+        series.setName("Expenses");
+
+        byDate.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .forEach(e -> series.getData().add(
+                        new XYChart.Data<>(e.getKey(), e.getValue()))
+                );
+
+        trendsChart.getData().add(series);
+    }
+
+
+
+    private void showAlert(String title, String msg) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle(title);
+        alert.setHeaderText(null);
+        alert.setContentText(msg);
+        alert.showAndWait();
+    }
+    @FXML
+    private void handleLogout(ActionEvent event) {
+        try {
+            Stage stage = (Stage) ((Node) event.getSource()).getScene().getWindow();
+
+            FXMLLoader loader = new FXMLLoader(getClass().getResource("login_view.fxml"));
+            Parent root = loader.load();
+
+            stage.setScene(new Scene(root));
+            stage.show();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    @FXML
+    private void handleAddBill() {
+        String name = billNameField.getText().trim();
+        String amountText = billAmountField.getText().trim();
+        String category = billCategoryCombo.getValue();
+        LocalDate dueDate = billDueDatePicker.getValue();
+        boolean recurring = billRecurringCheckBox.isSelected();
+
+        if (name.isEmpty() || amountText.isEmpty() || category == null) {
+            showAlert("Bills", "Please fill in name, amount, and category.");
+            return;
+        }
+
+        double amount;
+        try {
+            amount = Double.parseDouble(amountText);
+        } catch (NumberFormatException e) {
+            showAlert("Bills", "Amount must be a valid number.");
+            return;
+        }
+
+        Bill bill = new Bill(name, amount, category, dueDate, recurring);
+        bills.add(bill);
+        addBillCard(bill);
+        saveBillToFirestore(bill);
+        
+        billNameField.clear();
+        billAmountField.clear();
+        billCategoryCombo.getSelectionModel().clearSelection();
+        billDueDatePicker.setValue(null);
+        billRecurringCheckBox.setSelected(false);
+    }
+    private void saveBillToFirestore(Bill bill) {
+        if (db == null) return;
+
+        try {
+            Map<String, Object> data = new HashMap<>();
+            data.put("name", bill.getName());
+            data.put("amount", bill.getAmount());
+            data.put("category", bill.getCategory());
+            data.put("dueDate",
+                    bill.getDueDate() != null ? bill.getDueDate().toString() : null);
+            data.put("recurring", bill.isRecurring());
+            data.put("paid", bill.isPaid());
+            data.put("paidDate",
+                    bill.getPaidDate() != null ? bill.getPaidDate().toString() : null);
+
+            if (currentUserEmail != null) {
+                data.put("userEmail", currentUserEmail);
+            }
+
+            
+            String keyDate = bill.getDueDate() != null ? bill.getDueDate().toString() : "noDate";
+            String docId = (currentUserEmail != null ? currentUserEmail + "_" : "")
+                    + bill.getName() + "_" + keyDate;
+
+            db.collection("bills").document(docId).set(data);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+
+    @FXML
+    private void cancelBill() {
+        billNameField.clear();
+        billAmountField.clear();
+        billCategoryCombo.getSelectionModel().clearSelection();
+        billDueDatePicker.setValue(null);
+        billRecurringCheckBox.setSelected(false);
+    }
+    private void payBill(Bill bill, Label statusLabel) {
+        if (bill.isPaid()) {
+            showAlert("Bills", "This bill is already paid.");
+            return;
+        }
+
+        double amount = bill.getAmount();
+        double balance = getCurrentBalance();
+
+        if (amount > balance) {
+            showAlert("Bills",
+                    "Not enough balance to pay this bill. Available: $" + String.format("%.2f", balance));
+            return;
+        }
+
+        
+        Transaction tx = new Transaction(
+                "Expense",
+                bill.getCategory(),
+                "Bill payment: " + bill.getName(),
+                amount,
+                java.time.LocalDate.now()
+        );
+        addTransaction(tx);
+
+
+        bill.setPaid(true);
+        bill.setPaidDate(java.time.LocalDate.now());
+        statusLabel.setText("Status: PAID");
+
+
+        saveBillToFirestore(bill);
+    }
+
+    private void addBillCard(Bill bill) {
+        if (billsListBox == null) return;
+
+        HBox card = new HBox(10);
+        card.setStyle("-fx-background-color: #f7f7f7; -fx-padding: 10; -fx-background-radius: 8;");
+
+        VBox textBox = new VBox(3);
+        Label nameLabel = new Label(bill.getName());
+        nameLabel.setStyle("-fx-font-weight: bold;");
+        Label amountLabel = new Label(String.format("$%.2f", bill.getAmount()));
+        Label categoryLabel = new Label("Category: " + bill.getCategory());
+
+        String dueStr = (bill.getDueDate() != null)
+                ? bill.getDueDate().toString()
+                : "No due date";
+        Label dueLabel = new Label("Due: " + dueStr);
+
+        Label statusLabel = new Label(bill.isPaid() ? "Status: PAID" : "Status: UNPAID");
+
+        textBox.getChildren().addAll(nameLabel, amountLabel, categoryLabel, dueLabel, statusLabel);
+
+        Region spacer = new Region();
+        HBox.setHgrow(spacer, Priority.ALWAYS);
+
+        Button payButton = new Button("Pay");
+        payButton.setOnAction(e -> payBill(bill, statusLabel));
+
+        card.getChildren().addAll(textBox, spacer, payButton);
+        billsListBox.getChildren().add(card);
     }
 
 }
+
