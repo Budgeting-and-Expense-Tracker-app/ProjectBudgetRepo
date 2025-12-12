@@ -26,11 +26,12 @@
                            preserveRatio="true" />
 
                 <VBox spacing="5">
-                    <Text text="Budget Tracker">
+                    <Text text="BudgetPulse">
                         <font>
                             <Font name="Arial" size="20.0" />
                         </font>
                     </Text>
+
 
                     <Text fill="#797979" text="Manage your finances effectively">
                         <font>
@@ -154,10 +155,13 @@
                                 </columns>
                             </TableView>
 
+                            <HBox spacing="10" alignment="CENTER_RIGHT">
+                                <Button text="Delete Selected" onAction="#handleDeleteTransaction"/>
+                            </HBox>
+
                         </VBox>
                     </content>
                 </Tab>
-
 
                 <Tab text="Budgets">
                     <content>
@@ -385,19 +389,20 @@
                                             onAction="#handleAddBill" />
                                     <Button text="Clear" onAction="#cancelBill" />
                                 </HBox>
-
-                                <Separator />
-
-
-                                <VBox fx:id="billsListBox" spacing="8" />
                             </VBox>
+                            <ScrollPane fitToWidth="true" VBox.vgrow="ALWAYS">
+                                <content>
+                                    <VBox fx:id="billsListBox" spacing="8" />
+                                </content>
+                            </ScrollPane>
+
                         </VBox>
                     </content>
                 </Tab>
 
 
 
-                
+
                 <Tab text="Reports">
                     <content>
                         <VBox spacing="10">

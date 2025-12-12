@@ -23,7 +23,8 @@ import com.google.cloud.firestore.QueryDocumentSnapshot;
 import javafx.event.ActionEvent;
 import javafx.scene.Node;
 import javafx.scene.Parent;
-
+import com.google.cloud.firestore.DocumentReference;
+import javafx.scene.paint.Color;
 
 
 
@@ -187,11 +188,15 @@ public class DashboardController {
             String dateStr = doc.getString("date");
 
             if (amount == null) amount = 0.0;
-            LocalDate date = (dateStr != null && !dateStr.isBlank())
-                    ? LocalDate.parse(dateStr)
-                    : LocalDate.now();
+            java.time.LocalDate date = (dateStr != null && !dateStr.isBlank())
+                    ? java.time.LocalDate.parse(dateStr)
+                    : java.time.LocalDate.now();
 
             Transaction t = new Transaction(type, category, description, amount, date);
+
+
+            t.setId(doc.getId());
+
             transactions.add(t);
 
             if ("Income".equalsIgnoreCase(type)) {
@@ -205,6 +210,7 @@ public class DashboardController {
             transactionsTable.setItems(transactions);
         }
     }
+
     private void loadBudgetsFromFirestore() throws Exception {
         ApiFuture<QuerySnapshot> future = db.collection("budgets")
                 .whereEqualTo("userEmail", currentUserEmail)
@@ -336,7 +342,6 @@ public class DashboardController {
         }
     }
 
-    
     public void addTransaction(Transaction transaction) {
         transactions.add(transaction);
 
@@ -345,6 +350,7 @@ public class DashboardController {
         } else {
             totalExpenses += transaction.getAmount();
         }
+
         if (transactionsTable != null) {
             transactionsTable.setItems(transactions);
         }
@@ -352,13 +358,15 @@ public class DashboardController {
         updateSummaryLabels();
         updateBudgetProgress();
         updateCharts();
+
         saveTransactionToFirestore(transaction);
     }
+
     private void saveTransactionToFirestore(Transaction t) {
         if (db == null) return;
 
         try {
-            Map<String, Object> data = new HashMap<>();
+            java.util.Map<String, Object> data = new java.util.HashMap<>();
             data.put("type", t.getType());
             data.put("category", t.getCategory());
             data.put("description", t.getDescription());
@@ -369,8 +377,11 @@ public class DashboardController {
                 data.put("userEmail", currentUserEmail);
             }
 
-            
-            db.collection("transactions").add(data);   
+            ApiFuture<DocumentReference> future =
+                    db.collection("transactions").add(data);
+
+            DocumentReference docRef = future.get();
+            t.setId(docRef.getId());
 
         } catch (Exception e) {
             e.printStackTrace();
@@ -382,7 +393,6 @@ public class DashboardController {
     private void updateSummaryLabels() {
         double balance = totalIncome - totalExpenses;
         double budgetRemaining;
-
         if (totalBudgetLimit > 0) {
             budgetRemaining = totalBudgetLimit - totalExpenses;
         } else {
@@ -397,11 +407,20 @@ public class DashboardController {
         }
         if (balanceLabel != null) {
             balanceLabel.setText(String.format("$%.2f", balance));
+            if (balance < 0) {
+                balanceLabel.setFill(Color.RED);
+            } else {
+                balanceLabel.setFill(Color.web("#27c62a"));
+            }
         }
         if (budgetRemainingLabel != null) {
             budgetRemainingLabel.setText(String.format("$%.2f", budgetRemaining));
+            if (budgetRemaining < 0) {
+                budgetRemainingLabel.setFill(Color.RED);
+            } else {
+                budgetRemainingLabel.setFill(Color.BLACK);
+            }
         }
-
         if (budgetPercentLabel != null) {
             if (totalBudgetLimit > 0) {
                 double usedPercent = (totalExpenses / totalBudgetLimit) * 100.0;
@@ -412,7 +431,8 @@ public class DashboardController {
         }
     }
 
-    
+
+
 
     @FXML
     private void onAddBudget() {
@@ -430,6 +450,7 @@ public class DashboardController {
             showAlert("Budget", "Please select category and enter amount.");
             return;
         }
+
 
         double amount;
         try {
@@ -463,6 +484,20 @@ public class DashboardController {
         updateBudgetProgress();
         updateCharts();
     }
+
+
+
+    private void deleteTransactionFromFirestore(Transaction t) {
+        if (db == null) return;
+        if (t.getId() == null || t.getId().isBlank()) return;
+
+        try {
+            db.collection("transactions").document(t.getId()).delete();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private void saveBudgetToFirestore(String category, double limit) {
         if (db == null) return;
 
@@ -509,11 +544,38 @@ public class DashboardController {
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        card.getChildren().addAll(textBox, spacer);
-        card.setUserData(limit); 
+        Button deleteButton = new Button("Delete");
+        deleteButton.setOnAction(e -> deleteBudget(category, limit, card));
 
+        card.setUserData(limit);
+
+        card.getChildren().addAll(textBox, spacer, deleteButton);
         budgetListBox.getChildren().add(card);
     }
+    private void deleteBudget(String category, double limit, HBox card) {
+        if (budgetListBox != null) {
+            budgetListBox.getChildren().remove(card);
+        }
+        budgetLimits.remove(category);
+        totalBudgetLimit -= limit;
+        if (budgetListBox != null && budgetListBox.getChildren().isEmpty()) {
+            setVisibleManaged(budgetListBox, false);
+            setVisibleManaged(budgetsEmptyStateBox, true);
+        }
+        updateSummaryLabels();
+        updateBudgetProgress();
+        deleteBudgetFromFirestore(category);
+    }
+    private void deleteBudgetFromFirestore(String category) {
+        if (db == null) return;
+        try {
+            String docId = (currentUserEmail != null ? currentUserEmail + "_" : "") + category;
+            db.collection("budgets").document(docId).delete();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 
     private void updateBudgetProgress() {
         if (budgetListBox == null) return;
@@ -647,6 +709,30 @@ public class DashboardController {
             }
         });
     }
+    @FXML
+    private void handleDeleteTransaction() {
+        if (transactionsTable == null) return;
+
+        Transaction selected = transactionsTable.getSelectionModel().getSelectedItem();
+        if (selected == null) {
+            showAlert("Transactions", "Please select a transaction to delete.");
+            return;
+        }
+
+        if ("Income".equalsIgnoreCase(selected.getType())) {
+            totalIncome -= selected.getAmount();
+        } else {
+            totalExpenses -= selected.getAmount();
+        }
+
+        transactions.remove(selected);
+
+        updateSummaryLabels();
+        updateBudgetProgress();
+        updateCharts();
+
+        deleteTransactionFromFirestore(selected);
+    }
 
 
     private void addSavingGoalCard(SavingGoal goal) {
@@ -658,15 +744,10 @@ public class DashboardController {
         VBox textBox = new VBox(3);
         Label nameLabel = new Label(goal.getName());
         nameLabel.setStyle("-fx-font-weight: bold;");
-
         Label targetLabel = new Label(String.format("Target: $%.2f", goal.getTargetAmount()));
-        Label deadlineLabel = new Label(
-                goal.getDeadline() != null ? "Deadline: " + goal.getDeadline() : "No deadline"
-        );
-
-        Label progressLabel = new Label();   
+        Label deadlineLabel = new Label(goal.getDeadline() != null ? "Deadline: " + goal.getDeadline() : "No deadline");
+        Label progressLabel = new Label();
         updateSavingProgressLabel(goal, progressLabel);
-
         textBox.getChildren().addAll(nameLabel, targetLabel, deadlineLabel, progressLabel);
 
         Region spacer = new Region();
@@ -675,9 +756,33 @@ public class DashboardController {
         Button addMoneyButton = new Button("Add Money");
         addMoneyButton.setOnAction(e -> showAddMoneyDialog(goal, progressLabel));
 
-        card.getChildren().addAll(textBox, spacer, addMoneyButton);
+        Button deleteButton = new Button("Delete");
+        deleteButton.setOnAction(e -> deleteSavingGoal(goal, card));
 
+        card.getChildren().addAll(textBox, spacer, addMoneyButton, deleteButton);
         savingsListBox.getChildren().add(card);
+    }
+
+    private void deleteSavingGoal(SavingGoal goal, HBox card) {
+        savingGoals.remove(goal);
+        if (savingsListBox != null) {
+            savingsListBox.getChildren().remove(card);
+            if (savingsListBox.getChildren().isEmpty()) {
+                setVisibleManaged(savingsListBox, false);
+                setVisibleManaged(savingsEmptyStateBox, true);
+            }
+        }
+        deleteSavingGoalFromFirestore(goal);
+    }
+
+    private void deleteSavingGoalFromFirestore(SavingGoal goal) {
+        if (db == null) return;
+        try {
+            String docId = (currentUserEmail != null ? currentUserEmail + "_" : "") + goal.getId();
+            db.collection("savings").document(docId).delete();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void saveSavingGoalToFirestore(SavingGoal goal) {
@@ -918,14 +1023,9 @@ public class DashboardController {
         nameLabel.setStyle("-fx-font-weight: bold;");
         Label amountLabel = new Label(String.format("$%.2f", bill.getAmount()));
         Label categoryLabel = new Label("Category: " + bill.getCategory());
-
-        String dueStr = (bill.getDueDate() != null)
-                ? bill.getDueDate().toString()
-                : "No due date";
+        String dueStr = bill.getDueDate() != null ? bill.getDueDate().toString() : "No due date";
         Label dueLabel = new Label("Due: " + dueStr);
-
         Label statusLabel = new Label(bill.isPaid() ? "Status: PAID" : "Status: UNPAID");
-
         textBox.getChildren().addAll(nameLabel, amountLabel, categoryLabel, dueLabel, statusLabel);
 
         Region spacer = new Region();
@@ -934,9 +1034,30 @@ public class DashboardController {
         Button payButton = new Button("Pay");
         payButton.setOnAction(e -> payBill(bill, statusLabel));
 
-        card.getChildren().addAll(textBox, spacer, payButton);
+        Button deleteButton = new Button("Delete");
+        deleteButton.setOnAction(e -> deleteBill(bill, card));
+
+        card.getChildren().addAll(textBox, spacer, payButton, deleteButton);
         billsListBox.getChildren().add(card);
     }
+    private void deleteBill(Bill bill, HBox card) {
+        bills.remove(bill);
+        if (billsListBox != null) {
+            billsListBox.getChildren().remove(card);
+        }
+        deleteBillFromFirestore(bill);
+    }
+    private void deleteBillFromFirestore(Bill bill) {
+        if (db == null) return;
+        try {
+            String keyDate = bill.getDueDate() != null ? bill.getDueDate().toString() : "noDate";
+            String docId = (currentUserEmail != null ? currentUserEmail + "_" : "") + bill.getName() + "_" + keyDate;
+            db.collection("bills").document(docId).delete();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
 
 }
 

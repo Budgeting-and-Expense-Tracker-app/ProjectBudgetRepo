@@ -1,6 +1,6 @@
 # Default ignored files
 /shelf/
 /workspace.xml
-
+src\main\resources\com\budgettracker\key.json
 .DS_Store
-src/main/resources/com/budgettracker/key.json
+
